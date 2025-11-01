@@ -11,7 +11,7 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified', 'prevent-back'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
-    })->name('dashboard')->middleware('permission:bhs_administrator/bhs_employee');   
+    })->name('dashboard')/*->middleware('permission:bhs_administrator/bhs_employee')*/;   
 });
 
 require __DIR__.'/settings.php';
