@@ -35,17 +35,9 @@ class FinalBaggageController extends Controller
     public function updateStatus(Request $request, Baggages $baggage): RedirectResponse
     {
         // 1. Validation
-        // $validated = $request->validate([
-        //     'status' => 'required|string|in:Checked-in,Loaded,Unloaded,Delivered',
-        // ]);
-
-        // $newStatus = $validated['status'];
-        // $tag = $baggage->tag;
-
-        // 1. Validation
         $request->validate([
             // ENUM status list
-            'status' => 'required|string|in:Pending,Checked-in,Loaded,Unloaded,Delivered',
+            'status' => 'required|string|in:Pending,Checked-in,Loaded,Unloaded,Delivered,Lost/Delayed',
         ]);
 
         $newStatus = $request->status;

@@ -30,8 +30,81 @@ const statusColor = (status: string) => {
         case 'Loaded': return 'bg-yellow-400 text-black shadow-yellow-300'; 
         case 'Unloaded': return 'bg-green-600 text-white shadow-green-300'; 
         case 'Delivered': return 'bg-cyan-700 text-white shadow-cyan-300'; 
+        case 'Lost/Delayed': return 'bg-red-700 text-white shaddow-red-00' ;
         case 'Pending': default: return 'bg-gray-500 text-white shadow-gray-300'; 
     }
+};
+
+// --- Confirmation Modal Component ---
+interface ConfirmationModalProps {
+    baggage: Baggage;
+    onClose: () => void;
+    onConfirm: (id: number, status: string) => void;
+    isLoading: boolean;
+}
+
+const ConfirmationModal = ({ baggage, onClose, onConfirm, isLoading }: ConfirmationModalProps) => {
+    return (
+        <div className="fixed inset-0 flex items-center justify-center z-50 transition-opacity duration-300">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 p-6 transform transition-all duration-300 scale-110">
+                <div className="flex items-center space-x-4 mb-4">
+                    <div className="flex-shrink-0">
+                        {/* Warning Icon */}
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Confirm Status Lost or Delayed</h3>
+                </div>
+
+                <div className="mb-8 text-gray-900">
+                    {/* DETAILS - Now using text-lg for bigger size */}
+                    <p className="mb-2 text-gray-800 text-lg">
+                        You are about to flag baggage "{baggage.tag}" as Lost/Delayed.
+                    </p>
+                    <div className="ml-4 space-y-1 text-lg"> {/* Applied text-lg here */}
+                        <p className="font-medium">
+                            Flight: {baggage.flight_number}
+                        </p>
+                        <p className="font-medium">
+                            PassengerID: {baggage.passenger_id}
+                        </p>
+                    </div>
+                    
+                    {/* FINAL WARNING - Added mt-2 (8px margin) and kept text-sm */}
+                    <p className="text-sm **mt-2** border-t pt-2 text-gray-500" style={{ marginTop: '5px' }}>
+                        This is an irreversible action that initiates a formal investigation and prevents further operational steps.
+                    </p>
+                </div>
+                
+                <div className="flex justify-end space-x-3">
+                    <button
+                        type="button"
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150"
+                        onClick={onClose}
+                        disabled={isLoading}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition duration-150 flex items-center justify-center disabled:opacity-50"
+                        // When confirmed, update the status to 'Lost/Delayed'
+                        onClick={() => onConfirm(baggage.id, 'Lost/Delayed')}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <>
+                                Flagging... <LoadingSpinner />
+                            </>
+                        ) : (
+                            'Confirm Lost/Delayed'
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const LoadingSpinner = () => (
@@ -55,6 +128,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function BaggageIndex({ baggages: initialBaggages }: Props) {
     const [baggages, setBaggages] = useState<Baggage[]>(initialBaggages);
     const [processingId, setProcessingId] = useState<number | null>(null);
+    const [baggageToConfirm, setBaggageToConfirm] = useState<Baggage | null>(null); // State to hold baggage for modal confirmation
+ 
     
     // Sync state when new props are received from the server reload
     useEffect(() => {
@@ -69,6 +144,7 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
         if (processingId === id) return; 
 
         setProcessingId(id);
+        setBaggageToConfirm(null); // Close modal if open
         
         const url = `/baggages/${id}`; 
 
@@ -97,6 +173,13 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
             }
         );
     }, [processingId]);
+
+    /**
+     * Opens the confirmation modal when 'Lost/Delayed' is clicked.
+     */
+    const handleLostDelayedClick = useCallback((baggage: Baggage) => {
+        setBaggageToConfirm(baggage);
+    }, []);
 
     // Helper component to render a single baggage card
     const BaggageCard = ({ b }: { b: Baggage }) => {
@@ -172,7 +255,7 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
                     <div className="h-10 flex items-center">
                         {b.weight > b.max_weight && (
                             <div className="bg-red-100 border-l-4 border-red-500 p-2 text-red-700 text-xs font-semibold rounded w-full">
-                                ⚠ **OVERWEIGHT:** Exceeds max weight.
+                                ⚠ OVERWEIGHT : Exceeds max weight.
                             </div>
                         )}
                     </div>
@@ -182,16 +265,35 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
                 <div className="p-5 bg-gray-50 border-t border-gray-200 flex flex-wrap gap-2">
                     {b.status === 'Delivered' ? (
                         <p className="w-full text-center text-sm text-gray-500 font-medium">Delivered Successfuly</p>
-                    ) : nextAction ? (
-                        <button
-                            className={`flex-1 min-w-0 px-3 py-2 text-sm font-medium ${nextAction.color} text-white rounded-lg transition disabled:opacity-50`}
-                            disabled={isLoading}
-                            onClick={() => updateStatus(b.id, nextAction.target)}
-                        >
-                            {isLoading ? `${nextAction.label}...` : nextAction.label}
-                        </button>
+                    ) : b.status === 'Lost/Delayed' ? (
+                         <div className='w-full text-center'>
+                             <span className='inline-block px-4 py-1 text-sm font-medium bg-red-100 text-red-700 rounded-lg'>
+                                Status: Lost/Delayed - Requires Investigation
+                            </span>
+                        </div>
                     ) : (
-                        <p className="w-full text-center text-sm text-gray-500 font-medium">Ready for next step</p>
+                        // If the baggage is NOT delivered and NOT already lost/delayed, show both buttons
+                        <>
+                            {/* Primary next action button */}
+                            {nextAction && (
+                                <button
+                                    className={`flex-1 min-w-0 px-3 py-2 text-sm font-medium ${nextAction.color} text-white rounded-lg transition disabled:opacity-50`}
+                                    disabled={isLoading}
+                                    onClick={() => updateStatus(b.id, nextAction.target)}
+                                >
+                                    {isLoading ? `${nextAction.label}...` : nextAction.label}
+                                </button>
+                            )}
+                            
+                            {/* Secondary Lost/Delayed button - Triggers Modal */}
+                            <button
+                                className={`flex-1 min-w-0 px-3 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 ${!nextAction ? 'w-full' : ''}`}
+                                disabled={isLoading}
+                                onClick={() => handleLostDelayedClick(b)} // Now calls the modal handler
+                            >
+                                {isLoading ? 'Requesting Confirmation...' : 'Lost/Delayed'}
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -201,13 +303,13 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Baggages" />
-            <div className="w-5/6 mx-auto">
-                <h1 className="text-3xl font-extrabold text-white-900 mb-6">Baggage Handling System (BHS) Operations</h1>
+            <div className="w-5/5 mx-auto p-10">
+                <h1 className="text-3xl font-extrabold text-white-900">Baggage Handling System (BHS) Operations</h1>
                 <p className="text-white-600 mb-8">
-                    Click the next logical button to transition the item's operational status.
+                    {/* Click the next logical button to transition the item's operational status. */}
                 </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {baggages.length > 0 ? (
                         baggages.map(baggage => <BaggageCard b={baggage} key={baggage.id} />)
                     ) : (
@@ -215,8 +317,18 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
                             <p className="text-xl font-medium text-gray-500">No baggage items found.</p>
                         </div>
                     )}
-                </div>
+                </div>  
             </div>
+            
+            {/* Render Confirmation Modal if state is set */}
+            {baggageToConfirm && (
+                <ConfirmationModal 
+                    baggage={baggageToConfirm}
+                    onClose={() => setBaggageToConfirm(null)}
+                    onConfirm={updateStatus} // updateStatus handles the API call and closes the modal (by clearing baggageToConfirm)
+                    isLoading={!!processingId}
+                />
+            )}
         </AppLayout>
     );
 }

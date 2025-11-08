@@ -28,6 +28,13 @@ Route::middleware(['auth', 'verified', 'prevent-back'])->group(function () {
         ->name('baggage.update'); 
     
 
+
+
+    //FIS Connecting Flights
+    Route::get('/connecting-flights', function () {
+        // This assumes the component is located at 'resources/js/Pages/Connecting/Index.tsx'
+        return Inertia::render('Connecting/Index');
+    })->name('connecting.index');
 });
 
  

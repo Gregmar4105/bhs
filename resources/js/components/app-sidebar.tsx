@@ -13,7 +13,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid , Luggage, RadioTower, Users } from 'lucide-react';
+import { BookOpen, Folder, LayoutGrid , Luggage, PlaneLanding, RadioTower, Users } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -23,9 +23,14 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Baggage',
+        title: 'Baggages',
         href: '/baggages',
         icon: Luggage,
+    },
+    {
+        title: 'Connecting Flights',
+        href: '/connecting-flights',
+        icon: PlaneLanding,
     },
 ];
 

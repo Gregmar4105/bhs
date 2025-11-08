@@ -96,4 +96,12 @@ class Baggages extends Model // Changed from Baggages to Baggage (Recommended)
             'status' => 'Delivered'
         ]);
     }
+
+    public function markAsLostDelayed(): void
+    {
+        // 
+        $this->update([
+            'status' => 'Lost/Delayed'
+        ]);
+    }
 }

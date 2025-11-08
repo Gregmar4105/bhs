@@ -50,6 +50,18 @@ class DeliveredHandler implements StatusHandlerInterface
     }
 }
 
+class LostDelayedHandler implements StatusHandlerInterface {
+    public function handle(Baggages $baggage): void {
+        // A baggage cannot be marked Lost/Delayed if it has already been Delivered.
+        if ($baggage->status === 'Delivered') {
+            throw new \Exception("Cannot mark delivered baggage as Lost/Delayed.");
+        }
+        // This is a status that can be applied at any stage prior to delivery.
+        $baggage->status = 'Lost/Delayed';
+    }
+}
+
+
 class StatusHandlerFactory
 {
     public static function make(string $status): StatusHandlerInterface
@@ -59,6 +71,7 @@ class StatusHandlerFactory
             'Loaded' => new LoadedHandler(),
             'Unloaded' => new UnloadedHandler(),
             'Delivered' => new DeliveredHandler(),
+            'Lost/Delayed' => new LostDelayedHandler(),
             default => throw new \Exception("Invalid status: $status"),
         };
     }
