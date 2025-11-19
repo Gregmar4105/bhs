@@ -258,7 +258,7 @@ export default function BaggageIndex({ baggages: initialBaggages }: Props) {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Baggages" />
             <div className="w-5/5 mx-auto p-10 flex flex-col p-4 md:p-10 bg-white min-h-screen rounded-xl shadow-2xl">
-                <h1 className="text-3xl font-extrabold text-white-900">Baggage Handling System (BHS) Operations</h1>
+                <h1 className="text-3xl font-extrabold text-white-900">Baggage Handling System (Status) Operations</h1>
                 <p className="text-white-600 mb-8"></p>
 
                 {/* --- Search Bar --- */}

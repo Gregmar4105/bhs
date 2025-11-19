@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Home', href: '/' },
-    { title: 'Assign', href: '/assign-baggages' },
+    { title: 'Assign Baggages', href: '/assign-baggages' },
 ];
 
 interface Passenger {
@@ -221,7 +221,7 @@ const submitForm = (e: React.FormEvent) => {
       )}
 
       <div className="p-10">
-        <h1 className="text-3xl font-bold mb-6">Assign / Edit Baggage</h1>
+        <h1 className="text-3xl font-bold mb-6">Assign / Edit Passenger Baggages</h1>
 
         <div className="overflow-x-auto shadow-lg rounded-xl bg-white border">
           <table className="min-w-full divide-y divide-gray-200">

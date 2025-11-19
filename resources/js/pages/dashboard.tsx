@@ -206,7 +206,7 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4">
                     <div className="mb-4 md:mb-0">
                         <h1 className="text-3xl font-extrabold text-gray tracking-tight">
-                            Passenger Monitoring System API
+                            Passenger Monitoring 
                         </h1>
                         <p className="text-lg text-gray-600 mt-1">
                             Real-time tracking of baggage status of passengers.
