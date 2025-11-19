@@ -25,12 +25,15 @@ class Baggages extends Model // Changed from Baggages to Baggage (Recommended)
         'flight_number',
         'destination',
         'status',
+        'check_in_at',
+        'loaded_at',
+        'unloaded_at',
     ];
 
     protected $casts = [
         'weight' => 'float',
         'max_weight' => 'float',
-        'checked_in_at' => 'datetime',
+        'check_in_at' => 'datetime',
         'loaded_at' => 'datetime',
         'unloaded_at' => 'datetime',
     ];
@@ -69,7 +72,7 @@ class Baggages extends Model // Changed from Baggages to Baggage (Recommended)
     {
         $this->update([
             'status' => 'Checked-in',
-            'checked_in_at' => Carbon::now()
+            'check_in_at' => Carbon::now()
         ]);
     }
 

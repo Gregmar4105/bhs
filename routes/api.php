@@ -12,3 +12,8 @@ use inertia\Inertia;
         // This assumes the component is located at 'resources/js/Pages/Connecting/Index.tsx'
         return Inertia::render('Connecting/Index');
     })->name('connecting.index');
+
+    // Assign Baggages
+    Route::get('/baggages/assign', function () {
+        return Inertia::render('Baggage/Form');
+    })->name('baggages.assign');

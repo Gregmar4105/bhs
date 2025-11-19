@@ -34,28 +34,30 @@ class FinalBaggageController extends Controller
 
     public function updateStatus(Request $request, Baggages $baggage): RedirectResponse
     {
-        // 1. Validation
+        // Validate the incoming status (only allowed values)
         $request->validate([
             // ENUM status list
             'status' => 'required|string|in:Pending,Checked-in,Loaded,Unloaded,Delivered,Lost/Delayed',
         ]);
 
+        // New desired status
         $newStatus = $request->status;
+
+        // Store tag for flash message
         $tag = $baggage->tag;
 
         // Start a database transaction to ensure integrity
         DB::beginTransaction();
 
         try {
-            // 2. Status Transition Logic: Use the Factory and Handler
+            // Create the correct handler based on the requested status
             $handler = StatusHandlerFactory::make($newStatus);
+
             // Execute the handler logic (updates $baggage in memory)
             $handler->handle($baggage);
 
-            // 💡 FINAL FIX: Use the update method directly.
-            // This is the most reliable way to persist the change and avoids
-            // potential issues with $baggage->save() failing silently on specific attributes.
-            $baggage->update(['status' => $newStatus]);
+            // Save the updated baggage status to the database
+            $baggage->save();
             
             // Commit the transaction if everything succeeded
             DB::commit();
@@ -63,11 +65,12 @@ class FinalBaggageController extends Controller
         } catch (\Exception $e) {
             // Rollback the transaction if the handler threw an exception (e.g., transition failure)
             DB::rollBack();
+
             // Return a flash error message
             return back()->with('error', $e->getMessage());
         }
 
-        // 3. Response: Redirect back to the tracking page for a full data refresh
+        // Redirect back to the tracking page for a full data refresh
         return redirect()->route('baggage.index')
             ->with('success', "Baggage $tag status successfully updated to $newStatus.");
     }

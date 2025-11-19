@@ -26,19 +26,35 @@ Route::middleware(['auth', 'verified', 'prevent-back'])->group(function () {
     // We use a POST to an ID and name the route 'update' for clarity.
     Route::post('/baggages/{baggage}', [FinalBaggageController::class, 'updateStatus'])
         ->name('baggage.update'); 
-    
+    });
+
+    // ASSIGN BAGGAGE FORM 
+    // Assign / View Baggage Page
+        Route::get('/assign-baggages', function () {
+            return Inertia::render('Baggage/Assign');
+        })->name('baggages.create');
+
+        // API: Get all assigned passenger IDs
+        Route::get('/baggage/all-passenger-ids', function () {
+            return Baggages::pluck('passenger_id');
+        });
+
+        // API: Get baggage by passenger (latest)
+        Route::get('/baggage/by-passenger/{id}', function ($id) {
+            return Baggages::where('passenger_id', $id)->latest()->firstOrFail();
+        });
+
+        // Assign new baggage
+        Route::post('/baggage/store', [BaggageController::class, 'store'])->name('baggage.store');
+
+        // Update existing baggage
+        Route::post('/baggage/update', [BaggageController::class, 'update'])->name('baggage.update');
 
 
-
-    //FIS Connecting Flights
     Route::get('/connecting-flights', function () {
-        // This assumes the component is located at 'resources/js/Pages/Connecting/Index.tsx'
-        return Inertia::render('Connecting/Index');
+        return Inertia::render('Connecting/Index'); 
     })->name('connecting.index');
-});
-
  
-
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

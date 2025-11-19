@@ -1,236 +1,335 @@
-import React, { useState, useEffect } from 'react';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
+
+
+
+import React, { useState, useEffect, useMemo } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/react';
+import { Input } from "@/components/ui/input";
 
-// Define the shape of the flight data (matching the JSON output from your n8n workflow)
+// --- Types ---
 interface Flight {
-    flight_number: string;
-    airline: string;
-    transfer_time: string;
-    state: string;
+    id?: number;
+    user_id?: number;
+    flight_number?: string;
+    airline_code?: string;
+    origin_code?: string;
+    destination_code?: string;
+    aircraft_icao_code?: string;
+    gate_code?: string;
+    baggage_code?: string;
+    scheduled_departure_time?: string;
+    scheduled_arrival_time?: string;
+    status_code?: string;
+    passenger_status?: string | null;
 }
 
-// Define the shape of the component's state
 interface FlightState {
     flights: Flight[];
     last_updated: string;
 }
 
-// Polling interval in miliseconds (30seconds)
-const POLLING_INTERVAL= 10000;
+const POLLING_INTERVAL = 10000;
+const apiUrl = 'https://n8n.larable.dev/webhook/real/pms-datas';
 
-// Helper function to handle fetch retry logic and exponential backoff
+// --- Breadcrumbs ---
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Home', href: '/' },
+    { title: 'Connecting Flights', href: '/connecting-flights' },
+];
+
+// ---- STATUS COLORS ----
+const getStatusColor = (status: string | undefined) => {
+    if (!status) return "bg-gray-200 text-gray-700";
+    const code = status.split("-")[1];
+    switch (code) {
+        case "SCH": return "bg-blue-100 text-blue-700";
+        case "DEP": return "bg-yellow-100 text-yellow-700";
+        case "ARR": return "bg-green-100 text-green-800";
+        case "CNL": return "bg-red-100 text-red-700";
+        default: return "bg-gray-200 text-gray-700";
+    }
+};
+
+const getPassengerStatusColor = (status: string | undefined | null) => {
+    if (!status) return "bg-gray-100 text-gray-600";
+    switch (status.toLowerCase()) {
+        case "checked-in": return "bg-green-100 text-green-800";
+        case "boarding": return "bg-blue-100 text-blue-700";
+        case "no-show": return "bg-orange-100 text-orange-700";
+        case "cancelled": return "bg-red-100 text-red-700";
+        default: return "bg-gray-100 text-gray-600";
+    }
+};
+
+// --- Highlight matching search term ---
+const highlightText = (text: string | undefined, term: string) => {
+    if (!text || !term) return text;
+    const regex = new RegExp(`(${term})`, "gi");
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+        regex.test(part) ? <span key={i} className="bg-yellow-200">{part}</span> : part
+    );
+};
+
+// --- Fetch flights ---
 const fetchWithRetry = async (url: string, retries = 3): Promise<FlightState> => {
     let lastError: Error | null = null;
     for (let i = 0; i < retries; i++) {
         try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-            });
-
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!response.ok) {
-                // Read response text for better debugging if HTTP status is bad
-                const responseText = await response.text();
-                throw new Error(`HTTP error! Status: ${response.status}. Response body (if available): ${responseText.substring(0, 100)}...`);
+                const body = await response.text();
+                throw new Error(`HTTP ${response.status}: ${body.slice(0, 100)}...`);
             }
-
             const data = await response.json();
+            if (!Array.isArray(data)) throw new Error("Invalid API schema");
 
-            // Crucial defensive check against incomplete n8n response structures
-            if (!data.flights || !Array.isArray(data.flights)) {
-                throw new Error("Invalid data format received from API: 'flights' array missing.");
-            }
+            // Extract passenger statuses
+            const passengerStatuses: string[] = data.filter(item => item.passenger_status).map(item => item.passenger_status);
+            let flights = data.filter(item => item.flight_number);
+            // Remove duplicates based on flight_number
+            const seen = new Set();
+            flights = flights.filter(f => {
+                if (seen.has(f.flight_number)) return false;
+                seen.add(f.flight_number);
+                return true;
+            });
+            flights = flights.map((f, index) => ({
+                ...f,
+                passenger_status: passengerStatuses[index] ?? null,
+            }));
 
-            return data as FlightState;
-
-        } catch (error) {
-            lastError = error as Error;
-            console.error(`Attempt ${i + 1} failed:`, lastError.message);
-            if (i < retries - 1) {
-                // Exponential backoff
-                await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
-            }
+            return { flights, last_updated: new Date().toLocaleString() };
+        } catch (err) {
+            lastError = err as Error;
+            if (i < retries - 1) await new Promise((r) => setTimeout(r, 2 ** i * 1000));
         }
     }
     throw lastError;
 };
 
-// Breadcrumbs definition using the imported BreadcrumbItem type
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Home',
-        href: '/',
-    },
-    {
-        title: 'Connecting Flights',
-        href: '/connecting-flights',
-    },
-];
+// --- Sort flights by departure then flight number ---
+// --- Sort flights by departure then flight number ---
+const sortFlights = (flights: Flight[]) =>
+    [...flights].sort((a, b) => {
+        const timeA = a.scheduled_departure_time;
+        const timeB = b.scheduled_departure_time;
 
-export default function Dashboard() {
+        const t1 = timeA ? new Date(timeA).getTime() : Infinity;
+        const t2 = timeB ? new Date(timeB).getTime() : Infinity;
+
+        // 1. Sort by Scheduled Departure Time (Ascending: Earlier times first)
+        // By assigning 'Infinity' to missing/invalid times, they are naturally pushed to the end.
+        if (t1 !== t2) {
+            // Note: If t1 or t2 is NaN, the comparison t1 - t2 results in NaN, which is treated as 0 (no change) in some sort implementations.
+            // Explicitly handle invalid dates by checking if they are valid numbers.
+            const validT1 = !isNaN(t1);
+            const validT2 = !isNaN(t2);
+
+            if (validT1 && validT2) return t1 - t2; // Ascending sort for valid times
+            if (!validT1 && validT2) return 1; // a comes last
+            if (validT1 && !validT2) return -1; // a comes first
+            return 0; // Both invalid, sort order doesn't matter for time
+        }
+        
+        // 2. Secondary sort by Flight Number (Ascending)
+        return (a.flight_number || "").localeCompare(b.flight_number || "", undefined, { numeric: true });
+    });
+
+export default function ConnectingFlight() {
     const [data, setData] = useState<FlightState>({ flights: [], last_updated: 'Never' });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [countdown, setCountdown] = useState(POLLING_INTERVAL / 1000); // Start at 30 seconds
-
-    // *****************************************************************************************
-    // ⚠️ IMPORTANT: Replace the placeholder below with your active n8n PRODUCTION Webhook URL.
-    // Ensure the URL looks like: https://your.n8n.instance/webhook/long-random-string
-    // *****************************************************************************************
-    const apiUrl = 'https://n8n.larable.dev/webhook/connecting-flights';
-    // *****************************************************************************************
+    const [countdown, setCountdown] = useState(POLLING_INTERVAL / 1000);
+    const [lastFlights, setLastFlights] = useState<Flight[]>([]);
+    const [searchTerm, setSearchTerm] = useState("");
 
     const fetchFlights = async () => {
-        if (apiUrl.includes('https://n8n.larable.dev/webhook-test/connecting-flights')) {
-             setError("Placeholder API URL detected. Please update 'apiUrl' with your active n8n Production Webhook URL.");
-             setLoading(false);
-             return;
-        }
-
-        setLoading(true);
-        setError(null);
         try {
+            setLoading(true);
+            setError(null);
             const fetchedData = await fetchWithRetry(apiUrl);
-            setData(fetchedData);
-            setCountdown(POLLING_INTERVAL / 1000); // Reset countdown on successful fetch
-        } catch (err) {
-            setError(`Failed to fetch data from API. Please check your n8n workflow URL and status: ${apiUrl}`);
-            console.error("Full Fetch Error:", err);
-            // Don't reset countdown on error, let it retry on next interval
+            setLastFlights(data.flights);
+            setData({ ...fetchedData, flights: sortFlights(fetchedData.flights) });
+            setCountdown(POLLING_INTERVAL / 1000);
+        } catch (e: any) {
+            setError(`Unable to fetch from API: ${e.message}`);
         } finally {
-            // Set loading back to false only when the data fetching is truly done.
-            // We keep the countdown running independently.
             setLoading(false);
         }
     };
 
-   // Effect 1: Handles the initial fetch and the polling interval
     useEffect(() => {
-        fetchFlights(); // Initial fetch
-
-        const intervalId = setInterval(fetchFlights, POLLING_INTERVAL); // Poll every 30 seconds
-
-        // Cleanup function
-        return () => clearInterval(intervalId);
+        fetchFlights();
+        const poll = setInterval(fetchFlights, POLLING_INTERVAL);
+        return () => clearInterval(poll);
     }, []);
 
-    // Effect 2: Handles the countdown timer display
     useEffect(() => {
-        // Decrement the countdown every second
-        const timerId = setInterval(() => {
-            setCountdown(prevCountdown => {
-                if (prevCountdown <= 1) {
-                    // This will be reset by fetchFlights on successful fetch, 
-                    // or naturally wrap back up as the fetch starts.
-                    return POLLING_INTERVAL / 1000; 
-                }
-                return prevCountdown - 1;
-            });
+        const timer = setInterval(() => {
+            setCountdown(s => (s <= 1 ? POLLING_INTERVAL / 1000 : s - 1));
         }, 1000);
-
-        // Cleanup function
-        return () => clearInterval(timerId);
+        return () => clearInterval(timer);
     }, []);
+
+    const hasChanged = (prev: Flight | undefined, curr: Flight) => {
+        if (!prev) return true;
+        return (
+            prev.id !== curr.id ||
+            prev.user_id !== curr.user_id ||
+            prev.flight_number !== curr.flight_number ||
+            prev.airline_code !== curr.airline_code ||
+            prev.scheduled_departure_time !== curr.scheduled_departure_time ||
+            prev.scheduled_arrival_time !== curr.scheduled_arrival_time ||
+            prev.status_code !== curr.status_code ||
+            prev.baggage_code !== curr.baggage_code ||
+            prev.passenger_status !== curr.passenger_status
+        );
+    };
+
+    const filteredFlights = useMemo(() => {
+        const term = searchTerm.toLowerCase();
+        // THIS IS THE SEARCH FILTER INCLUDE SOME VARIABLES YOU WANT TO SEARCH FOR
+        return sortFlights(
+            data.flights.filter(f => {
+                // Text search fields
+                const matchText =
+                    f.flight_number?.toLowerCase().includes(term) ||
+                    f.origin_code?.toLowerCase().includes(term) ||
+                    f.destination_code?.toLowerCase().includes(term) ||
+                    f.gate_code?.toLowerCase().includes(term) ||
+                    f.status_code?.toLowerCase().includes(term) ||
+                    f.baggage_code?.toLowerCase().includes(term) ||
+                    f.passenger_status?.toLowerCase().includes(term);
+
+                // Time search (partial string match, no lowercase needed)
+                const matchTime =
+                    f.scheduled_departure_time?.includes(term) ||
+                    f.scheduled_arrival_time?.includes(term) ||
+                    f.baggage_code?.includes(term);
+
+                return matchText || matchTime;
+            })
+        );
+    }, [data.flights, searchTerm]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Connecting Flights" />
-            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-10">
-                <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">
-                    Connecting Flight Transfer Monitor
-                </h1>
+            <div className="flex flex-col gap-6 p-4 md:p-10 bg-white min-h-screen rounded-xl shadow-2xl">
 
-                <div className="flex items-center justify-between mb-6 border-b pb-4 dark:border-gray-700">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Real-time monitoring of baggage requiring transfer to subsequent flights.
-                        <span className="font-semibold ml-2 text-gray-800 dark:text-gray-200">Last Sync: {data.last_updated}</span>
-                    </p>
-                    <div className={`text-sm font-bold px-3 py-1 rounded-full shadow-md transition-colors duration-500 
-                            ${countdown <= 5 ? 'bg-red-500 text-white' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'}`}>
-                        {loading ? 'SYNCING...' : `Next Update in: ${countdown}s`}
+                {/* Header & Countdown */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4">
+                    <div className="mb-4 md:mb-0">
+                        <h1 className="text-3xl font-extrabold text-gray tracking-tight">
+                            Baggages Transfer Monitor
+                        </h1>
+                        <p className="text-lg text-gray-600 mt-1">
+                            Real-time tracking of connecting flight details.
+                        </p>
                     </div>
+
+
+                    {/* Search Bar */}
+                    <div className="mb-6">
+                        <Input
+                            placeholder="Search flights..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="max-w-md"
+                        />
+                    </div>
+
+
+                    <div className="flex items-center space-x-4">
+                        <p className="text-sm text-gray-700 font-medium hidden sm:block">
+                            Last Sync: <span className="font-bold text-gray-900">{data.last_updated}</span>
+                        </p>
+                        <div className={`text-sm font-bold px-4 py-2 rounded-full shadow-lg min-w-[150px] text-center transition-colors duration-500 ${countdown <= 3 ? 'bg-red-500 text-white animate-pulse ring-4 ring-red-200' : 'bg-green-100 text-green-700 ring-2 ring-green-100'}`}>
+                            {loading ? 'RECEIVING DATA…' : `Next Update in: ${countdown}s`}
+                        </div>
+                    </div>
+                    
                 </div>
 
-                {/* Loading State / Error State */}
-                {(loading && data.flights.length === 0 && !error) && (
-                    <div className="bg-blue-100 dark:bg-blue-900 p-6 rounded-xl text-center shadow-lg">
-                        <svg className="animate-spin h-5 w-5 mr-3 text-blue-500 inline-block" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span className="text-blue-700 dark:text-blue-300 font-medium">Fetching real-time FIS data...</span>
-                    </div>
-                )}
 
-                {error && (
-                    <div className="bg-red-600 p-4 rounded-xl text-white shadow-xl mb-6">
-                        <p className="font-bold text-lg">Data Fetch Error!</p>
-                        <p className="text-sm mt-1">{error}</p>
-                    </div>
-                )}
-
-                {/* Data Table */}
-                <div className="overflow-x-auto shadow-xl rounded-xl">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                {/* Table */}
+                <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-xl">
+                    <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-[#34495e] text-white">
                             <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tl-xl">
-                                    Flight Number
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                                    Airline
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                                    Transfer Time
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tr-xl">
-                                    Baggage Status
-                                </th>
+                                {[
+                                    'ID', 'User ID','Flight Number', 'Airline', 'Origin', 'Destination',
+                                    'ICAO', 'Gate Code', 'Baggage Code',
+                                    'Departure', 'Arrival', 
+                                    // 'Status Code', 
+                                    'Passenger Status'
+                                ].map(h => (
+                                    <th key={h} className="px-6 py-4 text-left text-xs md:text-sm font-semibold uppercase tracking-wider">{h}</th>
+                                ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {data.flights.length > 0 ? (
-                                data.flights.map((flight) => {
-                                    const stateColor =
-                                        flight.state === 'Held/Delayed' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
-                                        flight.state === 'Misrouted' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' :
-                                        'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-
+                        <tbody className="bg-white divide-y divide-gray-100">
+                            {loading && filteredFlights.length === 0 ? (
+                                <tr>
+                                    <td colSpan={12} className="px-6 py-20 text-center text-gray-400 text-xl font-medium animate-pulse">
+                                        Retrieving data... Please wait.
+                                    </td>
+                                </tr>
+                            ) : filteredFlights.length === 0 ? (
+                                <tr>
+                                    <td colSpan={12} className="px-6 py-12 text-center text-gray-500 text-lg font-medium">
+                                        No flights match your search.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredFlights.map(flight => {
+                                    const prev = lastFlights.find(f => f.flight_number === flight.flight_number);
+                                    const changed = hasChanged(prev, flight);
                                     return (
-                                        <tr key={flight.flight_number} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-150 ease-in-out">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                                {flight.flight_number}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                                {flight.airline}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold">
-                                                <span className="text-gray-900 dark:text-white">{flight.transfer_time}</span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${stateColor}`}>
-                                                    {flight.state}
+                                        <tr key={flight.flight_number} className={`transition-all duration-1000 ${changed ? 'animate-pop' : 'hover:bg-blue-50/50'}`}>
+                                            <td className="px-6 py-4 text-sm font-bold text-gray-900">{highlightText(flight.id?.toString(), searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.user_id?.toString(), searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.flight_number, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.airline_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.origin_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.destination_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.aircraft_icao_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.gate_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.baggage_code, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.scheduled_departure_time, searchTerm)}</td>
+                                            <td className="px-6 py-4 text-sm">{highlightText(flight.scheduled_arrival_time, searchTerm)}</td>
+                                            {/* <td className="px-6 py-4 text-sm">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(flight.status_code)}`}>
+                                                    {highlightText(flight.status_code, searchTerm)}
+                                                </span>
+                                            </td> */}
+                                            <td className="px-6 py-4 text-sm">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPassengerStatusColor(flight.passenger_status)}`}>
+                                                    {highlightText(flight.passenger_status ?? "N/A", searchTerm)}
                                                 </span>
                                             </td>
                                         </tr>
                                     );
                                 })
-                            ) : (
-                                !loading && !error && (
-                                    <tr>
-                                        <td colSpan={4} className="px-6 py-12 whitespace-nowrap text-center text-gray-500 dark:text-gray-400 text-lg">
-                                            No connecting flights currently requiring transfer.
-                                        </td>
-                                    </tr>
-                                )
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            <style>{`
+                @keyframes popIn {
+                    0% { background-color: rgba(70, 140, 253, 0.2); }
+                    50% { background-color: rgba(70, 140, 253, 0.4); }
+                    100% { background-color: transparent; }
+                }
+                .animate-pop {
+                    animation: popIn 1s ease-out;
+                }
+            `}</style>
         </AppLayout>
     );
 }
+

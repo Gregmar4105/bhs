@@ -13,7 +13,7 @@ class CheckedInHandler implements StatusHandlerInterface
 {
     public function handle(Baggages $baggage): void
     {
-        $baggage->status = 'Checked-in';
+        $baggage->markAsCheckedIn();
     }
 }
 
@@ -24,7 +24,7 @@ class LoadedHandler implements StatusHandlerInterface
         if ($baggage->status !== 'Checked-in') {
             throw new \Exception("Cannot load baggage before check-in");
         }
-        $baggage->status = 'Loaded';
+        $baggage->markAsLoaded();
     }
 }
 
@@ -35,7 +35,7 @@ class UnloadedHandler implements StatusHandlerInterface
         if ($baggage->status !== 'Loaded') {
             throw new \Exception("Cannot unload baggage before loading");
         }
-        $baggage->status = 'Unloaded';
+        $baggage->markAsUnloaded();
     }
 }
 
@@ -46,18 +46,19 @@ class DeliveredHandler implements StatusHandlerInterface
         if ($baggage->status !== 'Unloaded') {
             throw new \Exception("Cannot deliver baggage before unloading");
         }
-        $baggage->status = 'Delivered';
+        $baggage->markAsDelivered();
     }
 }
 
-class LostDelayedHandler implements StatusHandlerInterface {
-    public function handle(Baggages $baggage): void {
-        // A baggage cannot be marked Lost/Delayed if it has already been Delivered.
+class LostDelayedHandler implements StatusHandlerInterface
+{
+    public function handle(Baggages $baggage): void
+    {
         if ($baggage->status === 'Delivered') {
             throw new \Exception("Cannot mark delivered baggage as Lost/Delayed.");
         }
-        // This is a status that can be applied at any stage prior to delivery.
-        $baggage->status = 'Lost/Delayed';
+
+        $baggage->markAsLostDelayed();
     }
 }
 
