@@ -278,10 +278,14 @@ const submitForm = (e: React.FormEvent) => {
                 <div>
                   <label className="font-semibold">Type</label>
                   <select className="w-full border p-2 rounded-lg" value={type} onChange={(e) => setType(e.target.value)}>
-                    <option value="backpack">Backpack</option>
-                    <option value="duffelbag">Duffel Bag</option>
-                    <option value="briefcase">Briefcase</option>
-                    <option value="suitcase">Suitcase</option>
+                    <option value="Fragile">Fragile</option>
+                    <option value="Hand-Carry">Priority</option>
+                    <option value="VIP">Heavy</option>
+                    <option value="Normal">Oversized</option>
+                    <option value="Normal">Live Animals</option>
+                    <option value="Normal">Security</option>
+                    <option value="Normal">Firearms/Ammunition</option>
+                    
                   </select>
                   {errors.type && <p className="text-red-500 text-sm">{errors.type[0]}</p>}
                 </div>
